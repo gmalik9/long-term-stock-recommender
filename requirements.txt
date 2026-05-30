@@ -1,0 +1,11 @@
+streamlit>=1.32
+yfinance>=0.2.40
+pandas>=2.0
+numpy>=1.24
+requests>=2.31
+nltk>=3.8
+scipy>=1.11
+plotly>=5.18
+finnhub-python>=2.4
+praw>=7.7
+pytest>=7.0

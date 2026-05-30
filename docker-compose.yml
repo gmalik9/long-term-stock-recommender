@@ -1,0 +1,11 @@
+services:
+  dashboard:
+    build: .
+    image: stock-recommender:local
+    container_name: stock-recommender
+    ports:
+      - "8501:8501"
+    # Mount .streamlit so secrets.toml is picked up without baking into the image
+    volumes:
+      - ./.streamlit:/app/.streamlit:ro
+    restart: unless-stopped

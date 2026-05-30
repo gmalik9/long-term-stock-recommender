@@ -1,0 +1,15 @@
+# Exclude things we don't need in the image
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+.DS_Store
+.vscode/
+.idea/
+nltk_data/
+plan.md
+design.md
+tasks.md
+README.md
