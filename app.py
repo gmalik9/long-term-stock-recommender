@@ -138,18 +138,6 @@ top_n = st.sidebar.slider(
     help="Total number of picks (stocks + ETFs) shown and allocated.",
 )
 
-st.sidebar.divider()
-quick_search = st.sidebar.text_input(
-    "🔍 Find ticker in picks",
-    value="",
-    placeholder="AAPL, MSFT, SPY…",
-    help=(
-        "Filter the Screened Picks table to rows whose ticker or company name "
-        "contains this text. Case-insensitive. Leave blank to show all picks. "
-        "To look up a ticker that isn't in your picks, use the 🔍 Lookup tab."
-    ),
-).strip().upper()
-
 
 # ---------- Header ----------
 
@@ -164,6 +152,65 @@ with right:
         st.rerun()
 
 st.caption(f"Last refreshed: {dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+
+# ---------- Global ticker search (top of page) ----------
+
+st.markdown("#### 🔍 Look up any US-listed ticker")
+gs1, gs2 = st.columns([6, 1])
+global_search = gs1.text_input(
+    "Global ticker search",
+    value="",
+    placeholder="Any US-listed symbol — stocks, ADRs (BABA, TSM, NVO), ETFs (SPY), leveraged (TQQQ, SOXL, NVDL)…",
+    help=(
+        "Fetches live price, fundamentals, analyst ratings, and multi-source news "
+        "+ sentiment for ANY US-listed ticker — not just those in your screened picks. "
+        "Works for common stocks, ADRs, ETFs, leveraged/inverse products, and single-stock leveraged ETFs. "
+        "Use hyphens for class shares (e.g. BRK-B)."
+    ),
+    label_visibility="collapsed",
+    key="global_search_input",
+).strip().upper()
+go_global = gs2.button(
+    "Search", type="primary", use_container_width=True, key="global_search_btn",
+    help="Fetch fresh data for this ticker (bypasses all caches).",
+)
+
+if go_global and global_search:
+    with st.spinner(f"Fetching live data for {global_search}…"):
+        g_row, g_news = _row_from_fresh(global_search)
+    if not g_row:
+        st.session_state.pop("global_lookup_result", None)
+        st.error(
+            f"Could not find data for **{global_search}**. "
+            "Check the symbol (e.g. `BRK-B` not `BRK.B`)."
+        )
+    else:
+        st.session_state["global_lookup_result"] = (
+            g_row, g_news, dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+g_result = st.session_state.get("global_lookup_result")
+if g_result:
+    g_row, g_news, g_at = g_result
+    g_tag = "ETF" if g_row.get("is_etf") else "Stock"
+    with st.container(border=True):
+        gh1, gh2 = st.columns([6, 1])
+        gh1.markdown(
+            f"### {g_row['ticker']} · "
+            f"<span style='color:gray;font-weight:400'>{g_row.get('name', '')}</span>",
+            unsafe_allow_html=True,
+        )
+        gh1.caption(
+            f"Type: **{g_tag}** · Sector: **{g_row.get('sector', '—')}** · "
+            f"Composite score: **{g_row.get('score', 0):.1f}** / 100 · Fetched at {g_at}"
+        )
+        if gh2.button("✕ Clear", key="global_search_clear", use_container_width=True):
+            st.session_state.pop("global_lookup_result", None)
+            st.rerun()
+        _render_detail_pane(g_row, g_news)
+
+st.divider()
 
 
 # ---------- Styling helpers (used by multiple tabs) ----------
@@ -354,13 +401,6 @@ sectors_selected = st.sidebar.multiselect(
 if sectors_selected:
     picks = picks[picks["sector"].isin(sectors_selected)].reset_index(drop=True)
 
-if quick_search:
-    mask = (
-        picks["ticker"].str.upper().str.contains(quick_search, na=False)
-        | picks["name"].str.upper().str.contains(quick_search, na=False)
-    )
-    picks = picks[mask].reset_index(drop=True)
-
 
 # ---------- Tabs ----------
 
@@ -377,11 +417,32 @@ with tab_stocks:
     if picks.empty:
         st.warning("No picks match the current filters. Try loosening PEG, beta, rating, or coverage.")
     else:
-        st.caption(
-            f"Showing **{len(picks)}** picks ("
-            f"{int((~picks['is_etf']).sum())} stocks · {int(picks['is_etf'].sum())} ETFs)."
-        )
-        display = picks[[
+        picks_filter = st.text_input(
+            "Filter picks",
+            value="",
+            placeholder="Type to filter the picks table by ticker or name (e.g. AAPL, tech, vanguard)…",
+            help="Case-insensitive substring match against Ticker or Name. Only filters the table below — use the global search at the top to look up tickers outside your picks.",
+            key="picks_filter_input",
+            label_visibility="collapsed",
+        ).strip().upper()
+
+        if picks_filter:
+            mask = (
+                picks["ticker"].str.upper().str.contains(picks_filter, na=False)
+                | picks["name"].str.upper().str.contains(picks_filter, na=False)
+            )
+            picks_view = picks[mask].reset_index(drop=True)
+        else:
+            picks_view = picks
+
+        if picks_view.empty:
+            st.info(f"No picks match “{picks_filter}”. Clear the filter to see all picks.")
+        else:
+            st.caption(
+                f"Showing **{len(picks_view)}** of {len(picks)} picks ("
+                f"{int((~picks_view['is_etf']).sum())} stocks · {int(picks_view['is_etf'].sum())} ETFs)."
+            )
+        display = picks_view[[
             "ticker", "name", "sector", "is_etf", "price", "upside_pct", "rating",
             "analyst_count", "peg_ratio", "beta", "risk_label",
             "sentiment_label", "sentiment_score", "score",
@@ -475,7 +536,7 @@ with tab_stocks:
 
         st.divider()
         st.subheader("Per-pick detail")
-        for _, row in picks.iterrows():
+        for _, row in picks_view.iterrows():
             is_etf = bool(row.get("is_etf", False))
             tag = "ETF" if is_etf else "Stock"
             tkr = row["ticker"]

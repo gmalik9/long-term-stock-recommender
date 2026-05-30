@@ -79,6 +79,15 @@ _WIDE_EXTRA: list[str] = [
     "TSM", "BABA", "ASML", "NVO", "TM", "SONY", "SHEL", "BP", "AZN", "SAP",
     "SNY", "RIO", "BHP", "VALE", "PDD", "JD", "BIDU", "NIO", "HSBC", "UL",
     "DEO", "BTI", "MUFG", "ING", "BCS",
+    # More ADRs (Europe / Asia / LatAm)
+    "NVS", "GSK", "RHHBY", "NSRGY", "LVMUY", "SIEGY", "DB", "ERIC", "NOK",
+    "PHG", "STLA", "VWAGY", "BMWYY", "MBGYY", "E", "EQNR", "TOT", "TTE",
+    "RACE", "SE", "GRAB", "CPNG", "MELI", "NU", "VIPS", "LI", "XPEV",
+    "BILI", "TCOM", "NTES", "YMM", "TME", "YUMC", "WB", "BEKE", "FUTU",
+    "TIGR", "INFY", "WIT", "HDB", "IBN", "RDY", "TAK", "HMC", "NMR",
+    "MFG", "SMFG", "LYG", "NWG", "UBS", "CS", "BBVA", "SAN", "ITUB",
+    "BSBR", "BBD", "PBR", "VRT", "YPF", "GGB", "SID", "CIG", "ABEV",
+    "FMX", "AMX", "KB", "SHG", "WF", "PKX", "LPL", "CHL",
 ]
 
 WIDE_US: list[str] = sorted(set(CURATED + _WIDE_EXTRA))
@@ -96,6 +105,16 @@ ETFS: list[str] = [
     "ARKK", "SMH", "SOXX", "QUAL", "MTUM", "VUG", "VTV", "SCHD", "DGRO",
     # Bonds (for balance)
     "BND", "AGG", "TLT", "IEF", "LQD", "HYG",
+    # Commodities
+    "GLD", "IAU", "SLV", "USO", "UNG", "DBC", "PDBC",
+    # Leveraged long (2x / 3x) -- high risk, short-term tactical only
+    "TQQQ", "SQQQ", "UPRO", "SPXL", "SPXU", "UDOW", "SDOW", "TNA", "TZA",
+    "SOXL", "SOXS", "TECL", "TECS", "FAS", "FAZ", "LABU", "LABD", "CURE",
+    "ERX", "ERY", "NUGT", "DUST", "JNUG", "JDST", "BOIL", "KOLD", "UCO",
+    "SCO", "UVXY", "SVXY", "TMF", "TMV",
+    # Single-stock leveraged (popular)
+    "TSLL", "TSLZ", "NVDL", "NVDS", "AAPU", "AAPD", "MSFU", "MSFD",
+    "AMZU", "AMZD", "GOOL", "METU", "BRKU", "COIL", "CONL",
 ]
 
 # Fast lookup
