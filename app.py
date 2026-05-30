@@ -10,10 +10,12 @@ import streamlit as st
 from src.data_fetcher import (
     fetch_fundamentals_bulk,
     fetch_news_bulk,
+    fetch_one_news_fresh,
+    fetch_one_ticker_fresh,
     refresh_all,
 )
 from src.portfolio import allocate, summary
-from src.screener import SCREEN_FILTERS, diversify, score, screen
+from src.screener import SCREEN_FILTERS, composite_score, diversify, risk_label_from_beta, score, screen
 from src.sentiment import score_article, score_news
 from src.universe import get_universe
 
@@ -136,6 +138,18 @@ top_n = st.sidebar.slider(
     help="Total number of picks (stocks + ETFs) shown and allocated.",
 )
 
+st.sidebar.divider()
+quick_search = st.sidebar.text_input(
+    "🔍 Find ticker in picks",
+    value="",
+    placeholder="AAPL, MSFT, SPY…",
+    help=(
+        "Filter the Screened Picks table to rows whose ticker or company name "
+        "contains this text. Case-insensitive. Leave blank to show all picks. "
+        "To look up a ticker that isn't in your picks, use the 🔍 Lookup tab."
+    ),
+).strip().upper()
+
 
 # ---------- Header ----------
 
@@ -212,6 +226,100 @@ def _color_sentiment_label(v):
     }.get(v, "")
 
 
+# ---------- Per-ticker fresh data + detail-pane renderer ----------
+
+def _row_from_fresh(ticker: str) -> tuple[dict | None, list[dict]]:
+    """Fetch fundamentals + news for a single ticker, bypassing caches.
+    Returns (enriched_row_dict, news_list) or (None, []) if not found."""
+    fundamentals = fetch_one_ticker_fresh(ticker)
+    if not fundamentals:
+        return None, []
+    news = fetch_one_news_fresh(ticker)
+    s = score_news(news)
+    enriched = {
+        **fundamentals,
+        "sentiment_score": s["sentiment_score"],
+        "sentiment_label": s["sentiment_label"],
+        "news_count": s["article_count"],
+        "top_headline": s["top_headline"],
+        "top_url": s["top_url"],
+        "top_score": s["top_score"],
+    }
+    enriched["score"] = composite_score(pd.Series(enriched))
+    enriched["risk_label"] = risk_label_from_beta(enriched.get("beta"))
+    return enriched, news
+
+
+def _render_detail_pane(row: dict, news: list[dict]) -> None:
+    """Render the metric strip + headlines for a single ticker.
+    `row` is an enriched dict (from picks OR from a fresh lookup)."""
+    is_etf = bool(row.get("is_etf", False))
+    target = row.get("target_price")
+    if is_etf:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Current price", f"${row['price']:.2f}",
+                  help="Most recent market price in USD.")
+        c2.metric("Risk", row["risk_label"], f"β {row['beta']:.2f}" if row.get("beta") else None,
+                  help="Risk bucket from beta. Low (<0.8), Medium (0.8–1.3), High (>1.3).")
+        c3.metric("Dividend yield", f"{(row.get('dividend_yield') or 0)*100:.2f}%",
+                  help="Annualized distribution as % of price.")
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Current price", f"${row['price']:.2f}",
+                  help="Most recent market price in USD.")
+        c2.metric(
+            "Analyst target (12-mo)",
+            f"${target:.2f}" if target else "—",
+            f"{row.get('upside_pct', 0):+.1f}% upside · {int(row.get('analyst_count') or 0)} analysts"
+            if target else None,
+            help=(
+                "Mean 12-month forward price target across covering analysts. "
+                "Convention: Wall Street targets are a 1-year horizon. "
+                "There is no guaranteed date — it's the consensus expectation "
+                "for where the stock should trade within ~12 months."
+            ),
+        )
+        peg = row.get("peg_ratio")
+        c3.metric("PEG", f"{peg:.2f}" if peg else "—",
+                  help="Price/Earnings to Growth. <1 = undervalued vs. growth; >1.5 = expensive.")
+        c4.metric("Risk", row["risk_label"], f"β {row['beta']:.2f}" if row.get("beta") else None,
+                  help="Risk bucket from beta. Low (<0.8), Medium (0.8–1.3), High (>1.3).")
+
+        if target:
+            st.caption(
+                f"⏱ Target horizon ≈ 12 months. Implied annualized return "
+                f"to consensus target: **{row.get('upside_pct', 0):+.1f}%**. "
+                "Actual realization depends on earnings delivery, multiple "
+                "expansion/compression, and macro conditions."
+            )
+
+    lo, hi = row.get("week52_low"), row.get("week52_high")
+    if lo and hi:
+        st.write(
+            f"**52-week range:** ${lo:.2f} – ${hi:.2f}  ·  "
+            f"**Current:** ${row['price']:.2f}  ·  "
+            f"**Sentiment:** {row['sentiment_label']} ({row['sentiment_score']:+.2f}, "
+            f"{int(row['news_count'])} articles)"
+        )
+
+    if news:
+        st.markdown("**Recent headlines (top 8 by impact)**")
+        scored_news = [(score_article(a), a) for a in news]
+        scored_news.sort(key=lambda x: abs(x[0]["score"]), reverse=True)
+        for s, art in scored_news[:8]:
+            chip = {"Positive": "🟢", "Neutral": "⚪", "Negative": "🔴"}[s["label"]]
+            src = art.get("source", "")
+            src_tag = f" <span style='color:#94a3b8;font-size:0.75em'>· {src}</span>" if src else ""
+            st.markdown(
+                f"{chip} [{art['headline']}]({art['url']})  "
+                f"<span style='color:gray;font-size:0.85em'>"
+                f"({s['score']:+.2f})</span>{src_tag}",
+                unsafe_allow_html=True,
+            )
+    else:
+        st.caption("No recent news.")
+
+
 # ---------- Build data ----------
 
 with st.spinner("Loading market data…"):
@@ -246,13 +354,21 @@ sectors_selected = st.sidebar.multiselect(
 if sectors_selected:
     picks = picks[picks["sector"].isin(sectors_selected)].reset_index(drop=True)
 
+if quick_search:
+    mask = (
+        picks["ticker"].str.upper().str.contains(quick_search, na=False)
+        | picks["name"].str.upper().str.contains(quick_search, na=False)
+    )
+    picks = picks[mask].reset_index(drop=True)
+
 
 # ---------- Tabs ----------
 
-tab_stocks, tab_news, tab_portfolio = st.tabs([
+tab_stocks, tab_news, tab_portfolio, tab_lookup = st.tabs([
     "📊 Screened Picks",
     "📰 News & Sentiment",
     f"💼 Portfolio (${int(BUDGET):,})",
+    "🔍 Lookup",
 ])
 
 
@@ -362,68 +478,32 @@ with tab_stocks:
         for _, row in picks.iterrows():
             is_etf = bool(row.get("is_etf", False))
             tag = "ETF" if is_etf else "Stock"
-            with st.expander(f"{row['ticker']} [{tag}] — {row['name']}  ·  {row['sector']}"):
-                target = row.get("target_price")
-                if is_etf:
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Current price", f"${row['price']:.2f}",
-                              help="Most recent market price in USD.")
-                    c2.metric("Risk", row["risk_label"], f"β {row['beta']:.2f}",
-                              help="Risk bucket from beta. Low (<0.8), Medium (0.8–1.3), High (>1.3).")
-                    c3.metric("Dividend yield", f"{(row.get('dividend_yield') or 0)*100:.2f}%",
-                              help="Annualized distribution as % of price.")
-                else:
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Current price", f"${row['price']:.2f}",
-                              help="Most recent market price in USD.")
-                    c2.metric(
-                        "Analyst target (12-mo)",
-                        f"${target:.2f}" if target else "—",
-                        f"{row['upside_pct']:+.1f}% upside · {int(row['analyst_count'])} analysts"
-                        if target else None,
-                        help=(
-                            "Mean 12-month forward price target across covering analysts. "
-                            "Convention: Wall Street targets are a 1-year horizon. "
-                            "There is no guaranteed date — it's the consensus expectation "
-                            "for where the stock should trade within ~12 months."
-                        ),
-                    )
-                    c3.metric("PEG", f"{row['peg_ratio']:.2f}" if row['peg_ratio'] else "—",
-                              help="Price/Earnings to Growth. <1 = undervalued vs. growth; >1.5 = expensive.")
-                    c4.metric("Risk", row["risk_label"], f"β {row['beta']:.2f}",
-                              help="Risk bucket from beta. Low (<0.8), Medium (0.8–1.3), High (>1.3).")
-
-                    if target:
-                        ann_pct = row['upside_pct']
-                        st.caption(
-                            f"⏱ Target horizon ≈ 12 months. Implied annualized return "
-                            f"to consensus target: **{ann_pct:+.1f}%**. "
-                            "Actual realization depends on earnings delivery, multiple "
-                            "expansion/compression, and macro conditions."
-                        )
-
-                st.write(
-                    f"**52-week range:** ${row['week52_low']:.2f} – ${row['week52_high']:.2f}  ·  "
-                    f"**Current:** ${row['price']:.2f}  ·  "
-                    f"**Sentiment:** {row['sentiment_label']} ({row['sentiment_score']:+.2f}, "
-                    f"{int(row['news_count'])} articles)"
+            tkr = row["ticker"]
+            with st.expander(f"{tkr} [{tag}] — {row['name']}  ·  {row['sector']}"):
+                # Per-pick refresh button
+                hcol1, hcol2 = st.columns([5, 1])
+                hcol1.markdown(
+                    f"<span style='color:#94a3b8;font-size:0.85em'>"
+                    f"Click 🔄 to re-fetch price, news, and ratings for **{tkr}** only "
+                    f"(bypasses the hourly cache for this ticker).</span>",
+                    unsafe_allow_html=True,
                 )
+                if hcol2.button("🔄 Refresh", key=f"refresh_{tkr}",
+                                help=f"Re-fetch {tkr} live data and headlines now."):
+                    with st.spinner(f"Refreshing {tkr}…"):
+                        fresh_row, fresh_news = _row_from_fresh(tkr)
+                    if fresh_row:
+                        st.session_state.setdefault("ticker_overrides", {})[tkr] = (fresh_row, fresh_news)
+                        st.success(f"Refreshed {tkr} at {dt.datetime.now().strftime('%H:%M:%S')}.")
+                    else:
+                        st.error(f"Could not fetch fresh data for {tkr}.")
 
-                news = news_map.get(row["ticker"], [])
-                if news:
-                    st.markdown("**Recent headlines (top 8 by impact)**")
-                    scored_news = [(score_article(a), a) for a in news]
-                    scored_news.sort(key=lambda x: abs(x[0]["score"]), reverse=True)
-                    for s, art in scored_news[:8]:
-                        chip = {"Positive": "🟢", "Neutral": "⚪", "Negative": "🔴"}[s["label"]]
-                        st.markdown(
-                            f"{chip} [{art['headline']}]({art['url']})  "
-                            f"<span style='color:gray;font-size:0.85em'>"
-                            f"({s['score']:+.2f})</span>",
-                            unsafe_allow_html=True,
-                        )
+                override = st.session_state.get("ticker_overrides", {}).get(tkr)
+                if override:
+                    fresh_row, fresh_news = override
+                    _render_detail_pane(fresh_row, fresh_news)
                 else:
-                    st.caption("No recent news.")
+                    _render_detail_pane(row.to_dict(), news_map.get(tkr, []))
 
 
 # ---- Tab 2: News & Sentiment (always-visible, no clicking) ----
@@ -570,6 +650,56 @@ with tab_portfolio:
             file_name=f"portfolio_{dt.date.today().isoformat()}.csv",
             mime="text/csv",
         )
+
+
+# ---- Tab 4: Lookup any ticker ----
+with tab_lookup:
+    st.subheader("🔍 Look up any stock or ETF")
+    st.caption(
+        "Fetch live fundamentals, analyst ratings, and multi-source news + sentiment "
+        "for **any** US-listed ticker — even ones not in your screened universe."
+    )
+
+    lcol1, lcol2 = st.columns([4, 1])
+    lookup_input = lcol1.text_input(
+        "Ticker symbol",
+        value=st.session_state.get("lookup_last", ""),
+        placeholder="e.g. AAPL, COIN, BRK-B, VTI",
+        help="Enter a US-listed ticker symbol. Hyphens are allowed (e.g. BRK-B). Always fetches fresh data, bypassing all caches.",
+        label_visibility="collapsed",
+    ).strip().upper()
+    do_lookup = lcol2.button("Search", type="primary", use_container_width=True,
+                             help="Fetch fresh price, fundamentals, analyst ratings, and news for this ticker.")
+
+    if do_lookup and lookup_input:
+        st.session_state["lookup_last"] = lookup_input
+        with st.spinner(f"Fetching live data for {lookup_input}…"):
+            lookup_row, lookup_news = _row_from_fresh(lookup_input)
+        if not lookup_row:
+            st.error(
+                f"Could not find data for **{lookup_input}**. "
+                "Check the symbol (use the exchange-listed ticker, e.g. `BRK-B` not `BRK.B`)."
+            )
+        else:
+            st.session_state["lookup_result"] = (lookup_row, lookup_news,
+                                                 dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    result = st.session_state.get("lookup_result")
+    if result:
+        lookup_row, lookup_news, fetched_at = result
+        tag = "ETF" if lookup_row.get("is_etf") else "Stock"
+        st.markdown(
+            f"### {lookup_row['ticker']} · "
+            f"<span style='color:gray;font-weight:400'>{lookup_row.get('name', '')}</span>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"Type: **{tag}** · Sector: **{lookup_row.get('sector', '—')}** · "
+            f"Composite score: **{lookup_row.get('score', 0):.1f}** / 100 · "
+            f"Fetched at {fetched_at}"
+        )
+        _render_detail_pane(lookup_row, lookup_news)
+
 
 st.caption(
     "Disclaimer: This dashboard is for informational purposes only and is not investment advice. "

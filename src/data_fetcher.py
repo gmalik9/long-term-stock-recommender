@@ -184,6 +184,18 @@ def fetch_news(ticker: str, days: int = 7) -> list[dict]:
     return _fetch_one_news(ticker, days)
 
 
+# ---------- Fresh (cache-bypass) helpers for per-ticker refresh & lookup ----------
+
+def fetch_one_ticker_fresh(ticker: str) -> dict | None:
+    """Bypass cache and pull fundamentals + analyst data for a single ticker."""
+    return _fetch_one_ticker(ticker)
+
+
+def fetch_one_news_fresh(ticker: str, days: int = 7) -> list[dict]:
+    """Bypass cache and pull news for a single ticker."""
+    return _fetch_one_news(ticker, days)
+
+
 # ---------- Optional Alpha Vantage fallback (disabled by default) ----------
 
 def _alpha_rate_limit() -> bool:
