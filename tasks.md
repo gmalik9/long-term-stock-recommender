@@ -57,13 +57,13 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 **Acceptance**: `streamlit run app.py` shows populated tables, refresh updates timestamp, filters mutate the table.
 
 ## Phase 7 — Deployment
-- [ ] **T7.1** Create `README.md` with local-run + deploy instructions
-- [ ] **T7.2** `git init`, initial commit, push to new GitHub repo `stock-recommender` (user creates the empty repo)
-- [ ] **T7.3** Connect repo at share.streamlit.io, point to `app.py`
-- [ ] **T7.4** Add `ALPHAVANTAGE_API_KEY` and `FINNHUB_API_KEY` in Streamlit Cloud Secrets
-- [ ] **T7.5** Deploy and smoke-test the public URL
+- [x] **T7.1** Create `README.md` with local-run + deploy instructions
+- [x] **T7.2** `git init`, initial commit, push to new GitHub repo `long-term-stock-recommender`
+- [x] **T7.3** Connect repo at share.streamlit.io, point to `app.py`
+- [x] **T7.4** Add `FINNHUB_API_KEY` (+ optional ALPHAVANTAGE / MARKETAUX / NEWSAPI) in Streamlit Cloud Secrets
+- [x] **T7.5** Deploy and smoke-test the public URL — live at https://long-term-stock.streamlit.app/
 
-**Acceptance**: Public URL loads the dashboard with refresh working end-to-end.
+**Acceptance**: Public URL loads the dashboard with refresh working end-to-end. ✅
 
 ## Phase 8 — Post-launch Polish (optional)
 - [ ] **T8.1** Add download-as-CSV for portfolio table
