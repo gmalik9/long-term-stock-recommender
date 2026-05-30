@@ -154,65 +154,6 @@ with right:
 st.caption(f"Last refreshed: {dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 
-# ---------- Global ticker search (top of page) ----------
-
-st.markdown("#### 🔍 Look up any US-listed ticker")
-gs1, gs2 = st.columns([6, 1])
-global_search = gs1.text_input(
-    "Global ticker search",
-    value="",
-    placeholder="Any US-listed symbol — stocks, ADRs (BABA, TSM, NVO), ETFs (SPY), leveraged (TQQQ, SOXL, NVDL)…",
-    help=(
-        "Fetches live price, fundamentals, analyst ratings, and multi-source news "
-        "+ sentiment for ANY US-listed ticker — not just those in your screened picks. "
-        "Works for common stocks, ADRs, ETFs, leveraged/inverse products, and single-stock leveraged ETFs. "
-        "Use hyphens for class shares (e.g. BRK-B)."
-    ),
-    label_visibility="collapsed",
-    key="global_search_input",
-).strip().upper()
-go_global = gs2.button(
-    "Search", type="primary", use_container_width=True, key="global_search_btn",
-    help="Fetch fresh data for this ticker (bypasses all caches).",
-)
-
-if go_global and global_search:
-    with st.spinner(f"Fetching live data for {global_search}…"):
-        g_row, g_news = _row_from_fresh(global_search)
-    if not g_row:
-        st.session_state.pop("global_lookup_result", None)
-        st.error(
-            f"Could not find data for **{global_search}**. "
-            "Check the symbol (e.g. `BRK-B` not `BRK.B`)."
-        )
-    else:
-        st.session_state["global_lookup_result"] = (
-            g_row, g_news, dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        )
-
-g_result = st.session_state.get("global_lookup_result")
-if g_result:
-    g_row, g_news, g_at = g_result
-    g_tag = "ETF" if g_row.get("is_etf") else "Stock"
-    with st.container(border=True):
-        gh1, gh2 = st.columns([6, 1])
-        gh1.markdown(
-            f"### {g_row['ticker']} · "
-            f"<span style='color:gray;font-weight:400'>{g_row.get('name', '')}</span>",
-            unsafe_allow_html=True,
-        )
-        gh1.caption(
-            f"Type: **{g_tag}** · Sector: **{g_row.get('sector', '—')}** · "
-            f"Composite score: **{g_row.get('score', 0):.1f}** / 100 · Fetched at {g_at}"
-        )
-        if gh2.button("✕ Clear", key="global_search_clear", use_container_width=True):
-            st.session_state.pop("global_lookup_result", None)
-            st.rerun()
-        _render_detail_pane(g_row, g_news)
-
-st.divider()
-
-
 # ---------- Styling helpers (used by multiple tabs) ----------
 
 def _color_signed(v, good_positive=True):
@@ -365,6 +306,65 @@ def _render_detail_pane(row: dict, news: list[dict]) -> None:
             )
     else:
         st.caption("No recent news.")
+
+
+# ---------- Global ticker search (top of page) ----------
+
+st.markdown("#### 🔍 Look up any US-listed ticker")
+gs1, gs2 = st.columns([6, 1])
+global_search = gs1.text_input(
+    "Global ticker search",
+    value="",
+    placeholder="Any US-listed symbol — stocks, ADRs (BABA, TSM, NVO), ETFs (SPY), leveraged (TQQQ, SOXL, NVDL)…",
+    help=(
+        "Fetches live price, fundamentals, analyst ratings, and multi-source news "
+        "+ sentiment for ANY US-listed ticker — not just those in your screened picks. "
+        "Works for common stocks, ADRs, ETFs, leveraged/inverse products, and single-stock leveraged ETFs. "
+        "Use hyphens for class shares (e.g. BRK-B)."
+    ),
+    label_visibility="collapsed",
+    key="global_search_input",
+).strip().upper()
+go_global = gs2.button(
+    "Search", type="primary", use_container_width=True, key="global_search_btn",
+    help="Fetch fresh data for this ticker (bypasses all caches).",
+)
+
+if go_global and global_search:
+    with st.spinner(f"Fetching live data for {global_search}…"):
+        g_row, g_news = _row_from_fresh(global_search)
+    if not g_row:
+        st.session_state.pop("global_lookup_result", None)
+        st.error(
+            f"Could not find data for **{global_search}**. "
+            "Check the symbol (e.g. `BRK-B` not `BRK.B`)."
+        )
+    else:
+        st.session_state["global_lookup_result"] = (
+            g_row, g_news, dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+g_result = st.session_state.get("global_lookup_result")
+if g_result:
+    g_row, g_news, g_at = g_result
+    g_tag = "ETF" if g_row.get("is_etf") else "Stock"
+    with st.container(border=True):
+        gh1, gh2 = st.columns([6, 1])
+        gh1.markdown(
+            f"### {g_row['ticker']} · "
+            f"<span style='color:gray;font-weight:400'>{g_row.get('name', '')}</span>",
+            unsafe_allow_html=True,
+        )
+        gh1.caption(
+            f"Type: **{g_tag}** · Sector: **{g_row.get('sector', '—')}** · "
+            f"Composite score: **{g_row.get('score', 0):.1f}** / 100 · Fetched at {g_at}"
+        )
+        if gh2.button("✕ Clear", key="global_search_clear", use_container_width=True):
+            st.session_state.pop("global_lookup_result", None)
+            st.rerun()
+        _render_detail_pane(g_row, g_news)
+
+st.divider()
 
 
 # ---------- Build data ----------
