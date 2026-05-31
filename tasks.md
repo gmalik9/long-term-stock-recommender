@@ -71,6 +71,23 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 - [ ] **T8.3** Add light/dark theme toggle
 - [ ] **T8.4** Show API quota usage in sidebar
 
+## Phase 9 — Agent Trading (MCP + Alpaca Paper Sandbox)
+- [ ] **T9.1** Add `alpaca-py`-free deps: `mcp` to `requirements.txt`; document `ALPACA_API_KEY_ID` / `ALPACA_SECRET_KEY` / `ALPACA_PAPER` in README + secrets template
+- [ ] **T9.2** Implement `src/broker.py` — Alpaca paper REST wrapper with all guard rails from design §9.3 (live-URL refusal, `ALPACA_PAPER` enforcement, `account_number` startswith `PA`, blocklist, per-order cap, per-symbol cap)
+- [ ] **T9.3** Implement `mcp_server/safety.py` (env gates, cap math, blocklist) and `mcp_server/audit.py` (SQLite writer)
+- [ ] **T9.4** Implement `mcp_server/server.py` exposing 7 read tools + 5 write tools + `audit://trades/recent` resource
+- [ ] **T9.5** Implement `rebalance_to_targets` algorithm in `src/broker.py` with `dry_run` support
+- [ ] **T9.6** Tests: `tests/test_broker.py` (guard rails + sandbox refusals); `tests/test_mcp_trading.py` (read works without flag, write refused without flag, dry-run rebalance returns plan)
+- [ ] **T9.7** `AGENTS.md` — operating envelope, tool descriptions, paper-only disclaimers, recommended agent workflow
+- [ ] **T9.8** Update `README.md` with Alpaca paper signup walkthrough + MCP config snippet for Claude Desktop
+- [ ] **T9.9** Add `data/trades.sqlite` to `.gitignore`; create `data/.gitkeep`
+- [ ] **T9.10** Smoke run: with paper creds in env, `python -m mcp_server.server` boots; `get_account` returns paper account; `place_order` for 1 share AAPL succeeds; `cancel_all_orders` clears it
+
+**Acceptance**:
+- All guard-rail tests pass (live URL refused, blocklist enforced, caps enforced, write tools refuse without trading flag)
+- With paper creds + `STOCK_REC_MCP_TRADING_ENABLED=true`, end-to-end MCP `place_order → list_orders → cancel_order` round-trips successfully against Alpaca paper
+- Audit log records every tool invocation
+
 ## Dependencies (sequencing)
 ```
 T1.* -> T2.* -> T3.* -> T4.* -> T5.* -> T6.* -> T7.*

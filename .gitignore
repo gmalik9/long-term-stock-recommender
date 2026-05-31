@@ -19,3 +19,7 @@ Thumbs.db
 
 # NLTK data cache (re-downloaded on demand)
 nltk_data/
+
+# MCP / broker audit log
+data/*.sqlite
+data/*.db

@@ -115,6 +115,11 @@ cmd_open() {
   fi
 }
 
+cmd_mcp_stdio() {
+  c_cyn "Starting MCP server on stdio (Ctrl-C to exit)..."
+  "${COMPOSE[@]}" exec "${SERVICE}" python -m mcp_server.server
+}
+
 usage() {
   cat <<EOF
 $(c_cyn "stock-recommender control script")
@@ -133,6 +138,7 @@ Commands:
   status        Show container + health status
   shell         Open a bash shell inside the container
   test          Run pytest test suite inside the container
+  mcp-stdio     Start the MCP agent server (stdio) inside the container
   open          Open the app in the default browser
   help          Show this message
 EOF
@@ -150,6 +156,7 @@ case "${1:-help}" in
   status|ps)   cmd_status ;;
   shell|sh|bash) cmd_shell ;;
   test|tests|pytest) cmd_test ;;
+  mcp-stdio|mcp) cmd_mcp_stdio ;;
   open)        cmd_open ;;
   help|-h|--help) usage ;;
   *) c_red "Unknown command: $1"; echo; usage; exit 1 ;;
