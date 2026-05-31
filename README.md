@@ -1,6 +1,10 @@
 # Long-Term Stock Recommender
 
 🚀 **Live app:** https://long-term-stock.streamlit.app/
+📦 **Repo:** https://github.com/gmalik9/long-term-stock-recommender
+
+> ⚡ Looking for short-term / day-trading signals? See the companion project:
+> **Short-Term Trader** — repo: https://github.com/gmalik9/short-term-stock-recommender · live: https://short-term-stock.streamlit.app/
 
 Streamlit dashboard that screens stocks for long-term investing (growth + value), surfaces analyst ratings and multi-source news sentiment, and allocates a $5,000 balanced portfolio. Refresh button re-fetches real-time data.
 
