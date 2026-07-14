@@ -6,10 +6,14 @@ HARD SANDBOX. Defense-in-depth refusals:
   2. ALPACA_PAPER env must be the literal string "true".
   3. The Alpaca `account_number` returned by /v2/account must start with "PA"
      (Alpaca's paper-account prefix). Otherwise refused on first call.
-  4. Symbols in BLOCKED_SYMBOLS (leveraged/inverse/vol ETFs) are refused.
-  5. Per-order notional capped at STOCK_REC_MAX_ORDER_USD (default $1000).
+  4. Symbols in BLOCKED_SYMBOLS (leveraged/inverse/vol ETFs) are refused
+     unless STOCK_REC_ALLOW_LEVERAGED="true" (paper only).
+  5. Per-order notional capped at STOCK_REC_MAX_ORDER_USD (default $1000;
+     0 disables the cap).
   6. Post-trade per-symbol notional capped at STOCK_REC_MAX_SYMBOL_PCT % of
-     equity (default 20%).
+     equity (default 20%; 0 disables the cap).
+
+Guarantees 1-3 are unconditional and cannot be disabled.
 
 All read calls work with valid paper credentials. All write calls additionally
 require STOCK_REC_MCP_TRADING_ENABLED="true" (enforced one layer up in
@@ -71,11 +75,21 @@ def _env(key: str, default: str | None = None) -> str | None:
 
 
 def _max_order_usd() -> float:
+    # 0 (or blank) disables the per-order notional cap.
     return float(_env("STOCK_REC_MAX_ORDER_USD", "1000") or "1000")
 
 
 def _max_symbol_pct() -> float:
+    # 0 (or blank) disables the per-symbol % cap.
     return float(_env("STOCK_REC_MAX_SYMBOL_PCT", "20") or "20")
+
+
+def _allow_leveraged() -> bool:
+    # When true, the leveraged/inverse/vol ETF blocklist is not enforced.
+    # Paper-only; the non-paper URL and PA-account guarantees still apply.
+    return (_env("STOCK_REC_ALLOW_LEVERAGED", "false") or "false").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
 
 
 def _base_url() -> str:
@@ -201,21 +215,26 @@ def get_last_price(symbol: str) -> float | None:
 
 def _assert_symbol_allowed(symbol: str) -> None:
     s = symbol.upper().strip()
-    if s in BLOCKED_SYMBOLS:
+    if s in BLOCKED_SYMBOLS and not _allow_leveraged():
         raise BrokerSandboxError(
             f"Symbol {s} is blocked (leveraged/inverse/volatility product). "
-            "These are disabled in the agent sandbox to prevent rapid capital loss."
+            "These are disabled in the agent sandbox to prevent rapid capital loss. "
+            "Set STOCK_REC_ALLOW_LEVERAGED=true to permit them (paper only)."
         )
 
 
 def _assert_caps(symbol: str, qty: float, price: float, equity: float) -> None:
     notional = abs(qty) * price
-    if notional > _max_order_usd():
+    max_usd = _max_order_usd()
+    if max_usd > 0 and notional > max_usd:
         raise BrokerCapExceeded(
             f"Order notional ${notional:.2f} exceeds per-order cap "
-            f"${_max_order_usd():.2f} (STOCK_REC_MAX_ORDER_USD)."
+            f"${max_usd:.2f} (STOCK_REC_MAX_ORDER_USD)."
         )
-    sym_cap = _max_symbol_pct() / 100.0 * equity
+    max_pct = _max_symbol_pct()
+    if max_pct <= 0:
+        return
+    sym_cap = max_pct / 100.0 * equity
     existing = get_position(symbol)
     existing_notional = abs(float(existing.get("market_value") or 0)) if existing else 0.0
     if existing_notional + notional > sym_cap + 1e-6:
